@@ -1,21 +1,10 @@
 #region Documentation
 '''
-         (              *      (         )       )       (      (      (
-   (     )\ )         (.  `     )\ )   ( /(    ( /(       )\ )   )\ )   )\ )    *   )
-   )\   (()/(   (     )\))(   (()/(   )\())   )\())     (()/(  (()/(  (()/(  ` )  /(
- (((_)   /(_))  )\   ((_)()\   /(_)) ((_)\   ((_)\       /(_))  /(_))  /(_))  ( )(_))
- )\___  (_))   ((_)  (_()((_) (_))     ((_)   _((_)     (_))   (_))   (_))_| (_(_())
-((/ __| | |    | __| |  \/  | / __|   / _ \  | \| |     | _ \  |_ _|  | |_   |_   _|
- | (__  | |__  | _|  | |\/| | \__ \  | (_) | | .` |     |   /   | |   | __|    | |
-  \___| |____| |___| |_|  |_| |___/   \___/  |_|\_|     |_|_\  |___|  |_|      |_|
 
 =========================================================r
 main.py
 =========================================================i
-Robotic Integration in Field Tasks
-This is a python based approach that uses computer vision to detect the real world
-coordinates of an object. These object coordinates are then given to a robotic system,
-DetlaX which picks and sorts the item.
+
 =========================================================f
 Author: Eric Osborne
 Date:   Aug 15, 2025
@@ -35,14 +24,13 @@ import threading
 #endregion
 
 #region Configurations
-CAM_INDEX       = 700
+CAM_INDEX       = 701
 YOLO_MODEL_PATH = "models/general.pt"
 CONF_THRESH     = 0.30
 H_FILE          = "H.npy" # homography: pixels -> world mm
-ALLOWED_LABELS  = "cell phone" # or set to None to allow any
-PICKUP_LABELS = "cell phone" # or set to None to allow any
+ALLOWED_LABELS  = None # or set to None to allow any
+PICKUP_LABELS = None # or set to None to allow any
 PORT = "COM4" # port may be different for your device use a program such as termite
-FULL_PICKUP_SEQUENCE = False
 
 FONT        = cv2.FONT_HERSHEY_SIMPLEX
 FONT_SCALE  = 0.5
@@ -116,32 +104,6 @@ def send_serial_message(message):
     finally:
         ser.close()
 
-'''for the vacuum pump D1 ON D6 OFF.'''
-def pickup(x, y):
-    '''This tells the robot what to do when we are picking up an object'''
-    global PICKUP_SEQUENCE_RUNNING
-    try:
-        print(f"G0 X{int(x)} Y{int(y)}")
-        send_serial_message(f"G0 X{int(x)} Y{int(y)} Z-650") # hover above location
-        time.sleep(1)
-        if FULL_PICKUP_SEQUENCE:
-            send_serial_message("G0 Z-700") # go down
-            time.sleep(1)
-            send_serial_message("M03 D6") # activate suction pump
-            time.sleep(1)
-            send_serial_message("M05 D6") # turn off pin (good house keeping)
-            send_serial_message("G0 Z-600")
-            time.sleep(1)
-            send_serial_message("G0 X0 Y0 Z-600") # go to home
-            time.sleep(1)
-            send_serial_message("M03 D1") # deactivate suction pump
-            time.sleep(.25)
-            send_serial_message("M05 D1") # turn off pin (good house keping)
-            send_serial_message("G28")
-    finally:
-        PICKUP_SEQUENCE_RUNNING = False   # guarantee reset even on error
-#endregion
-
 #region OnStart
 # try loading homography
 H = None
@@ -154,8 +116,6 @@ except Exception as e:
           "       Falling back to pixel coordinates. YOU NEED TO RUN calibration.py first")
 
 model = YOLO(YOLO_MODEL_PATH)
-
-send_serial_message("G1 F200 A5000 J1200000") # set speed parameters
 
 # try loading camera
 cap = cv2.VideoCapture(CAM_INDEX)
@@ -187,14 +147,6 @@ while True:
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
             X, Y   = pix2world(cx, cy, H)
-
-            # start pickup sequence on a separate thread if one is not already running
-            if not PICKUP_SEQUENCE_RUNNING:
-                print("launching pickup")
-                pickup_sequence = threading.Thread(target=pickup, args=(X,Y), daemon=True)
-                PICKUP_SEQUENCE_RUNNING = True # keeps track if one is running
-                pickup_sequence.start()  # launches the thread
-
             conf   = float(box.conf[0]) if box.conf is not None else 0.0
 
             # Box
